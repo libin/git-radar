@@ -63,7 +63,7 @@ prepare_bash_colors() {
   RESET_COLOR_CHANGES="\x01${GIT_RADAR_COLOR_CHANGES_RESET:-"\\033[0m"}\x02"
   RESET_COLOR_BRANCH="\x01${GIT_RADAR_COLOR_BRANCH_RESET:-"\\033[0m"}\x02"
   RESET_COLOR_STASH="\x01${GIT_RADAR_COLOR_STASH:-"\\033[0m"}\x02"
-
+  
 }
 
 prepare_zsh_colors() {
@@ -90,13 +90,13 @@ prepare_zsh_colors() {
   COLOR_CHANGES_UNTRACKED="%{${GIT_RADAR_COLOR_CHANGES_UNTRACKED:-$fg_bold[white]}%}"
 
   COLOR_STASH="%{${GIT_RADAR_COLOR_STASH:-$fg_bold[yellow]}%}"
-
+  
   local italic_m="$(printf '\xF0\x9D\x98\xAE')"
 
   COLOR_BRANCH="%{${GIT_RADAR_COLOR_BRANCH:-$reset_color}%}"
   MASTER_SYMBOL="${GIT_RADAR_MASTER_SYMBOL:-"%{$reset_color%}$italic_m%{$reset_color%}"}"
 
-  PROMPT_FORMAT="${GIT_RADAR_FORMAT:-" %{$fg_bold[grey]%}git:(%{$reset_color%}%{remote: }%{branch}%{ :local}%{$fg_bold[grey]%})%{$reset_color%}%{ :stash}%{ :changes}"}"
+  PROMPT_FORMAT="${GIT_RADAR_FORMAT:-" %{$fg_bold[grey]%}%{git}:(%{$reset_color%}%{remote: }%{branch}%{ :local}%{$fg_bold[grey]%})%{$reset_color%}%{ :stash}%{ :changes}"}"
 
   RESET_COLOR_LOCAL="%{${GIT_RADAR_COLOR_LOCAL_RESET:-$reset_color}%}"
   RESET_COLOR_REMOTE="%{${GIT_RADAR_COLOR_REMOTE_RESET:-$reset_color}%}"
@@ -227,6 +227,12 @@ branch_name() {
 branch_ref() {
   if is_repo; then
     printf '%s' "$(branch_name || commit_short_sha)"
+  fi
+}
+
+git_server() {
+  if is_repo; then
+    printf '%s' "$(git config --get remote.origin.url | sed 's/.*git@\(.*\)/\1/' | sed 's/\([a-z]*\).*/\1/')"
   fi
 }
 
@@ -536,16 +542,10 @@ stashed_status() {
   printf '%s' "$(git stash list | wc -l 2>/dev/null | grep -oEi '[0-9][0-9]*')"
 }
 
-is_cwd_a_dot_git_directory() {
-  [[ "$(basename "$PWD")" == ".git" ]]; return $?
-}
-
 stash_status() {
-  if ! is_cwd_a_dot_git_directory; then
-    local number_stashes="$(stashed_status)"
-    if [ $number_stashes -gt 0 ]; then
-      printf $PRINT_F_OPTION "${number_stashes}${COLOR_STASH}≡${RESET_COLOR_STASH}"
-    fi
+  local number_stashes="$(stashed_status)"
+  if [ $number_stashes -gt 0 ]; then
+    printf $PRINT_F_OPTION "${number_stashes}${COLOR_STASH}≡${RESET_COLOR_STASH}"
   fi
 }
 
@@ -604,7 +604,16 @@ render_prompt() {
     fi
   fi
 
-  printf '%b' "$output" | sed \
+  if [[ $PROMPT_FORMAT =~ ${if_pre}git${if_post} ]]; then
+    git_result="$(git_server)"
+    if [[ -n "$git_result" ]]; then
+      git_sed="s/${sed_pre}git${sed_post}/\2${git_result}\4/"
+    else
+      git_sed="s/${sed_pre}git${sed_post}/git/"
+    fi
+  fi
+
+  printf '%b' "$output" | sed -e "$git_sed"\
                             -e "$remote_sed" \
                             -e "$branch_sed" \
                             -e "$changes_sed" \
